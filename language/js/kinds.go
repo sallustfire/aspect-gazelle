@@ -74,6 +74,24 @@ var tsKinds = map[string]rule.KindInfo{
 		SubstituteAttrs: map[string]bool{},
 		MergeableAttrs: map[string]bool{
 			"srcs": true,
+
+			// Tsconfig attrs may be reflected when un-ignored via js_tsconfig_ignore -attr.
+			"isolated_typecheck":    true,
+			"tsconfig":              true,
+			"allow_js":              true,
+			"composite":             true,
+			"declaration":           true,
+			"declaration_dir":       true,
+			"declaration_map":       true,
+			"emit_declaration_only": true,
+			"source_map":            true,
+			"incremental":           true,
+			"ts_build_info_file":    true,
+			"no_emit":               true,
+			"resolve_json_module":   true,
+			"preserve_jsx":          true,
+			"out_dir":               true,
+			"root_dir":              true,
 		},
 		ResolveAttrs: map[string]bool{
 			"deps": true,
@@ -87,6 +105,24 @@ var tsKinds = map[string]rule.KindInfo{
 		SubstituteAttrs: map[string]bool{},
 		MergeableAttrs: map[string]bool{
 			"srcs": true,
+
+			// Tsconfig attrs may be reflected when un-ignored via js_tsconfig_ignore -attr.
+			"isolated_typecheck":    true,
+			"tsconfig":              true,
+			"allow_js":              true,
+			"composite":             true,
+			"declaration":           true,
+			"declaration_dir":       true,
+			"declaration_map":       true,
+			"emit_declaration_only": true,
+			"source_map":            true,
+			"incremental":           true,
+			"ts_build_info_file":    true,
+			"no_emit":               true,
+			"resolve_json_module":   true,
+			"preserve_jsx":          true,
+			"out_dir":               true,
+			"root_dir":              true,
 		},
 		ResolveAttrs: map[string]bool{
 			"deps": true,

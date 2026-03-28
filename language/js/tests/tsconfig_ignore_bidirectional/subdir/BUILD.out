@@ -1,9 +1,12 @@
 load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
 
+# gazelle:js_tsconfig_ignore -declaration
+
 ts_project(
-    name = "removed",
+    name = "subdir",
     srcs = ["main.ts"],
-    source_map = False,  # keep
+    composite = True,
+    declaration = True,
     tsconfig = ":tsconfig",
 )
 
@@ -11,4 +14,5 @@ ts_config(
     name = "tsconfig",
     src = "tsconfig.json",
     visibility = [":__subpackages__"],
+    deps = ["//:tsconfig"],
 )

@@ -98,6 +98,18 @@ const (
 	DefaultNpmPackageTargetName = TargetNameDirectoryVar
 )
 
+// TsConfigAttrState represents the explicit state of a tsconfig attribute override.
+type TsConfigAttrState int
+
+const (
+	// TsConfigAttrDefault means no explicit override — use kind-based default.
+	TsConfigAttrDefault TsConfigAttrState = iota
+	// TsConfigAttrIgnored means the attribute is explicitly ignored (bare name in directive).
+	TsConfigAttrIgnored
+	// TsConfigAttrReflected means the attribute is explicitly un-ignored (-name in directive).
+	TsConfigAttrReflected
+)
+
 type TargetGroup struct {
 	// The target name template of the target group.
 	// Supports {dirname} variable.
@@ -118,6 +130,11 @@ type TargetGroup struct {
 	// Per-group rule kind override. Empty string means use the default
 	// (ts_project or js_library based on source content).
 	ruleKind string
+
+	// Per-group overrides for tsconfig attribute ignore/reflect state.
+	// Key: attribute name, Value: explicit state.
+	// Attributes not present in this map use the global config or kind-based default.
+	tsconfigAttrOverrides map[string]TsConfigAttrState
 }
 
 var DefaultSourceGlobs = []*TargetGroup{
@@ -183,8 +200,8 @@ type JsGazelleConfig struct {
 	pnpmLockDir  string
 	pnpmLockPath string
 
-	tsconfigName         string
-	tsconfigIgnoredProps []string
+	tsconfigName            string
+	tsconfigGlobalOverrides map[string]TsConfigAttrState
 
 	ignoreDependencies       []common.GlobExpr
 	resolves                 []jsResolve
@@ -214,9 +231,9 @@ func newRootConfig() *JsGazelleConfig {
 		pnpmLockRel:                "",
 		pnpmLockDir:                "",
 		pnpmLockPath:               "pnpm-lock.yaml",
-		tsconfigName:               "tsconfig.json",
-		ignoreDependencies:         []common.GlobExpr{},
-		tsconfigIgnoredProps:       []string{},
+		tsconfigName:            "tsconfig.json",
+		ignoreDependencies:      []common.GlobExpr{},
+		tsconfigGlobalOverrides: make(map[string]TsConfigAttrState),
 		resolves:                   []jsResolve{},
 		validateImportStatements:   ValidationError,
 		collectAssetImports:        true,
@@ -236,13 +253,19 @@ func (g *TargetGroup) newChild() *TargetGroup {
 		sources = g.defaultSources
 	}
 
+	overrides := make(map[string]TsConfigAttrState, len(g.tsconfigAttrOverrides))
+	for k, v := range g.tsconfigAttrOverrides {
+		overrides[k] = v
+	}
+
 	return &TargetGroup{
-		name:           g.name,
-		customSources:  []string{},
-		defaultSources: sources,
-		testonly:       g.testonly,
-		visibility:     g.visibility,
-		ruleKind:       g.ruleKind,
+		name:                  g.name,
+		customSources:         []string{},
+		defaultSources:        sources,
+		testonly:              g.testonly,
+		visibility:            g.visibility,
+		ruleKind:              g.ruleKind,
+		tsconfigAttrOverrides: overrides,
 	}
 }
 
@@ -265,6 +288,12 @@ func (c *JsGazelleConfig) NewChild(childPath string) *JsGazelleConfig {
 	cCopy.targetNamingOverrides = make(map[string]string, len(c.targetNamingOverrides))
 	for k, v := range c.targetNamingOverrides {
 		cCopy.targetNamingOverrides[k] = v
+	}
+
+	// Copy the tsconfig global overrides, any modifications will be local.
+	cCopy.tsconfigGlobalOverrides = make(map[string]TsConfigAttrState, len(c.tsconfigGlobalOverrides))
+	for k, v := range c.tsconfigGlobalOverrides {
+		cCopy.tsconfigGlobalOverrides[k] = v
 	}
 
 	return &cCopy
@@ -372,22 +401,64 @@ func (c *JsGazelleConfig) GetTsconfigFile() string {
 	return c.tsconfigName
 }
 
-func (c *JsGazelleConfig) AddIgnoredTsConfig(propName string) {
-	// TODO: potentially support multiple comma-separated properties, removing properties instead of only adding
+// SetTsConfigAttrState sets the ignore/reflect state for a tsconfig attribute.
+// If groupName is "", it sets the global state. Otherwise it sets it on the named group.
+func (c *JsGazelleConfig) SetTsConfigAttrState(groupName, attrName string, state TsConfigAttrState) error {
+	if !isValidTsConfigAttr(attrName) {
+		return fmt.Errorf("unknown ts_project attribute %q\n\nAttributes must be the ts_project attribute name, not the tsconfig.json option name", attrName)
+	}
 
-	for _, prop := range tsProjectReflectedConfigAttributes {
-		if prop == propName {
-			c.tsconfigIgnoredProps = append(c.tsconfigIgnoredProps, propName)
-			return
+	if groupName == "" {
+		c.tsconfigGlobalOverrides[attrName] = state
+	} else {
+		target := c.GetSourceTarget(groupName)
+		if target == nil {
+			return fmt.Errorf("target group %q not found in %q", groupName, c.rel)
+		}
+		if target.tsconfigAttrOverrides == nil {
+			target.tsconfigAttrOverrides = make(map[string]TsConfigAttrState)
+		}
+		target.tsconfigAttrOverrides[attrName] = state
+	}
+	return nil
+}
+
+// IsTsConfigAttrIgnored checks whether a given tsconfig attribute should be ignored
+// for a given group and rule kind. Resolution order:
+// 1. Per-group explicit state (tsconfigAttrOverrides)
+// 2. Global explicit state (tsconfigGlobalOverrides)
+// 3. Default based on rule kind: ts_project reflects all, others ignore all.
+func (c *JsGazelleConfig) IsTsConfigAttrIgnored(group *TargetGroup, ruleKind string, attrName string) bool {
+	// 1. Check per-group override
+	if group != nil && group.tsconfigAttrOverrides != nil {
+		if state, ok := group.tsconfigAttrOverrides[attrName]; ok {
+			switch state {
+			case TsConfigAttrIgnored:
+				return true
+			case TsConfigAttrReflected:
+				return false
+			}
 		}
 	}
 
-	fmt.Printf("Unknown ts_project attribute to ignore: %q\n\nIgnored attributes must be the ts_project attribute, not the tsconfig.json option name\n", propName)
+	// 2. Check global override
+	if state, ok := c.tsconfigGlobalOverrides[attrName]; ok {
+		switch state {
+		case TsConfigAttrIgnored:
+			return true
+		case TsConfigAttrReflected:
+			return false
+		}
+	}
+
+	// 3. Default: ts_project reflects, others ignore
+	return ruleKind != TsProjectKind
 }
 
-func (c *JsGazelleConfig) IsTsConfigIgnored(propName string) bool {
-	for _, prop := range c.tsconfigIgnoredProps {
-		if prop == propName {
+// isValidTsConfigAttr checks if the given name is a valid tsconfig attribute.
+func isValidTsConfigAttr(name string) bool {
+	for _, attr := range tsProjectReflectedConfigAttributes {
+		if attr == name {
 			return true
 		}
 	}
@@ -614,9 +685,10 @@ func (c *JsGazelleConfig) addTargetGlob(targetName, glob string, isTestOnly bool
 
 	// ... otherwise create a new target
 	c.targets = append(c.targets, &TargetGroup{
-		name:          targetName,
-		customSources: []string{glob},
-		testonly:      isTestOnly,
+		name:                  targetName,
+		customSources:         []string{glob},
+		testonly:              isTestOnly,
+		tsconfigAttrOverrides: make(map[string]TsConfigAttrState),
 	})
 	return nil
 }

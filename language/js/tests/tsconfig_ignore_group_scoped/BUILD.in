@@ -1,0 +1,3 @@
+# gazelle:js_rule_kind {dirname}_tests js_test
+# gazelle:js_tsconfig_ignore {dirname}_tests -tsconfig,-declaration
+# gazelle:map_kind js_test jest_test //:defs.bzl
