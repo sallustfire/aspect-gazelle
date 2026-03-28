@@ -1,9 +1,11 @@
 load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
 
+# gazelle:js_tsconfig_ignore declaration
+
 ts_project(
-    name = "removed",
+    name = "tsconfig_ignore_bidirectional",
     srcs = ["main.ts"],
-    source_map = False,  # keep
+    composite = True,
     tsconfig = ":tsconfig",
 )
 

@@ -1,0 +1,28 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
+load("//:defs.bzl", "jest_test")
+
+# gazelle:js_rule_kind {dirname}_tests js_test
+# gazelle:js_tsconfig_ignore {dirname}_tests -tsconfig,-declaration
+# gazelle:map_kind js_test jest_test //:defs.bzl
+
+ts_project(
+    name = "tsconfig_ignore_group_scoped",
+    srcs = ["main.ts"],
+    composite = True,
+    declaration = True,
+    tsconfig = ":tsconfig",
+)
+
+jest_test(
+    name = "tsconfig_ignore_group_scoped_tests",
+    srcs = ["main.spec.ts"],
+    declaration = True,
+    tsconfig = ":tsconfig",
+    deps = [":tsconfig_ignore_group_scoped"],
+)
+
+ts_config(
+    name = "tsconfig",
+    src = "tsconfig.json",
+    visibility = [":__subpackages__"],
+)

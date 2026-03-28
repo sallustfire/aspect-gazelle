@@ -158,7 +158,10 @@ func (ts *typeScriptLang) readDirectives(c *config.Config, rel string, f *rule.F
 		case Directive_TsconfigFile:
 			config.SetTsconfigFile(value)
 		case Directive_TypeScriptConfigIgnore:
-			config.AddIgnoredTsConfig(strings.TrimSpace(value))
+			if err := parseTsConfigIgnoreDirective(config, strings.TrimSpace(value)); err != nil {
+				common.MisconfiguredErrorf(c, "invalid %s: %v", Directive_TypeScriptConfigIgnore, err)
+				return
+			}
 		case Directive_IgnoreImports:
 			config.AddIgnoredImport(strings.TrimSpace(value))
 		case Directive_Resolve:
@@ -291,4 +294,52 @@ func (ts *typeScriptLang) readDirectives(c *config.Config, rel string, f *rule.F
 			os.Exit(1)
 		}
 	}
+}
+
+// parseTsConfigIgnoreDirective parses the value of a js_tsconfig_ignore directive.
+// Supports:
+//   - Global: "attr1,attr2" or "attr1 attr2"
+//   - Group-scoped: "group_name attr1,attr2"
+//   - Bidirectional: "-attr" to un-ignore (reflect), bare "attr" to ignore
+func parseTsConfigIgnoreDirective(config *JsGazelleConfig, value string) error {
+	parts := strings.Fields(value)
+	if len(parts) == 0 {
+		return fmt.Errorf("empty value")
+	}
+
+	groupName := ""
+	attrSpecs := parts
+
+	// Check if the first token is a known target group name.
+	// This follows the same pattern as js_visibility and js_test_files.
+	if len(parts) > 1 && config.GetSourceTarget(parts[0]) != nil {
+		groupName = parts[0]
+		attrSpecs = parts[1:]
+	}
+
+	if len(attrSpecs) == 0 {
+		return fmt.Errorf("no attribute names specified")
+	}
+
+	// Parse comma-separated attribute specs from remaining tokens
+	for _, token := range attrSpecs {
+		for _, spec := range strings.Split(token, ",") {
+			spec = strings.TrimSpace(spec)
+			if spec == "" {
+				continue
+			}
+
+			state := TsConfigAttrIgnored
+			attrName := spec
+			if strings.HasPrefix(spec, "-") {
+				state = TsConfigAttrReflected
+				attrName = spec[1:]
+			}
+
+			if err := config.SetTsConfigAttrState(groupName, attrName, state); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
