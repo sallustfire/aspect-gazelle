@@ -301,6 +301,8 @@ func (ts *typeScriptLang) readDirectives(c *config.Config, rel string, f *rule.F
 //   - Global: "attr1,attr2" or "attr1 attr2"
 //   - Group-scoped: "group_name attr1,attr2"
 //   - Bidirectional: "-attr" to un-ignore (reflect), bare "attr" to ignore
+//   - "all" keyword: "all" ignores all attrs, "-all" un-ignores all attrs
+//     Composable: "-all,declaration" un-ignores all then re-ignores declaration
 func parseTsConfigIgnoreDirective(config *JsGazelleConfig, value string) error {
 	parts := strings.Fields(value)
 	if len(parts) == 0 {
@@ -334,6 +336,16 @@ func parseTsConfigIgnoreDirective(config *JsGazelleConfig, value string) error {
 			if strings.HasPrefix(spec, "-") {
 				state = TsConfigAttrReflected
 				attrName = spec[1:]
+			}
+
+			// "all" expands to every tsconfig attribute
+			if attrName == "all" {
+				for _, attr := range tsProjectReflectedConfigAttributes {
+					if err := config.SetTsConfigAttrState(groupName, attr, state); err != nil {
+						return err
+					}
+				}
+				continue
 			}
 
 			if err := config.SetTsConfigAttrState(groupName, attrName, state); err != nil {
