@@ -38,7 +38,9 @@ var tsKinds = map[string]rule.KindInfo{
 		NonEmptyAttrs: map[string]bool{
 			"srcs": true,
 		},
-		SubstituteAttrs: map[string]bool{},
+		SubstituteAttrs: map[string]bool{
+			"tsconfig": true,
+		},
 		MergeableAttrs: map[string]bool{
 			"srcs":   true,
 			"assets": true,
@@ -152,6 +154,7 @@ var tsKinds = map[string]rule.KindInfo{
 		},
 	},
 	TsConfigKind: {
+		MatchAttrs: []string{"src"},
 		NonEmptyAttrs: map[string]bool{
 			"src": true,
 		},
