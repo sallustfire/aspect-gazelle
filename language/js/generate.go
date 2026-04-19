@@ -626,21 +626,28 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		sourceRule.DelAttr("isolated_typecheck")
 	}
 
-	// If the rule kind is not a ts_project rule then delete all tsconfig related attributes.
-	// Delete from the existing rule if it exists to bypass any merge/#keep logic related to ts_project.
-	if ruleKind != TsProjectKind {
-		deleteFrom := sourceRule
-		if existing != nil {
-			deleteFrom = existing
-		}
-		for _, attr := range tsProjectReflectedConfigAttributes {
-			deleteFrom.DelAttr(attr)
-		}
-	} else if cfg.GetTsConfigGenerationEnabled(group.name) {
-		// If generating ts_config() targets also set the ts_project(tsconfig) and related attributes
-		// unless they have been explicitly opted out of being reflected.
+	if cfg.GetTsConfigGenerationEnabled(group.name) {
+		// Reflect ts_project(tsconfig) and related attributes from the tsconfig
+		// unless they have been explicitly opted out via js_tsconfig_ignore.
+		// For non-ts_project rule kinds the kind-based default in
+		// IsTsConfigIgnored treats every reflected attr as ignored, preserving
+		// the historical "strip all" behavior until the user opts in with a
+		// NONE sentinel on the group.
 
-		if !cfg.IsTsConfigIgnored(group.name, "tsconfig") {
+		// First strip ignored attrs from the existing rule so that merge
+		// doesn't carry them back. This replaces the previous unconditional
+		// "if ruleKind != TsProjectKind" strip block — that block stripped
+		// every reflected attr from existing; we now strip per-attr based on
+		// IsTsConfigIgnored, which honors NONE-driven un-ignores.
+		if existing != nil {
+			for _, attr := range tsProjectReflectedConfigAttributes {
+				if cfg.IsTsConfigIgnored(group.name, ruleKind, attr) {
+					existing.DelAttr(attr)
+				}
+			}
+		}
+
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "tsconfig") {
 			if tsconfig != nil {
 				tsconfigLabel := label.New("", tsconfigRel, cfg.RenderTsConfigName(tsconfig.ConfigName))
 				tsconfigLabel = tsconfigLabel.Rel("", args.Rel)
@@ -652,7 +659,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig allowJs in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "allow_js") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "allow_js") {
 			if tsconfig != nil && tsconfig.AllowJs != nil {
 				sourceRule.SetAttr("allow_js", *tsconfig.AllowJs)
 			} else {
@@ -661,7 +668,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig composite in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "composite") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "composite") {
 			if tsconfig != nil && tsconfig.Composite != nil {
 				sourceRule.SetAttr("composite", *tsconfig.Composite)
 			} else {
@@ -670,7 +677,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig declaration in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "declaration") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "declaration") {
 			if tsconfig != nil && tsconfig.Declaration != nil {
 				sourceRule.SetAttr("declaration", *tsconfig.Declaration)
 			} else {
@@ -679,7 +686,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig declarationMap in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "declaration_map") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "declaration_map") {
 			if tsconfig != nil && tsconfig.DeclarationMap != nil {
 				sourceRule.SetAttr("declaration_map", *tsconfig.DeclarationMap)
 			} else {
@@ -688,7 +695,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig emitDeclarationOnly in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "emit_declaration_only") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "emit_declaration_only") {
 			if tsconfig != nil && tsconfig.DeclarationOnly != nil {
 				sourceRule.SetAttr("emit_declaration_only", *tsconfig.DeclarationOnly)
 			} else {
@@ -697,7 +704,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig sourceMap in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "source_map") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "source_map") {
 			if tsconfig != nil && tsconfig.SourceMap != nil {
 				sourceRule.SetAttr("source_map", *tsconfig.SourceMap)
 			} else {
@@ -706,7 +713,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig incremental in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "incremental") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "incremental") {
 			if tsconfig != nil && tsconfig.Incremental != nil {
 				sourceRule.SetAttr("incremental", *tsconfig.Incremental)
 			} else {
@@ -715,7 +722,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig tsBuildInfoFile in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "ts_build_info_file") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "ts_build_info_file") {
 			if tsconfig != nil && tsconfig.TsBuildInfoFile != "" {
 				sourceRule.SetAttr("ts_build_info_file", tsconfig.TsBuildInfoFile)
 			} else {
@@ -724,7 +731,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig noEmit in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "no_emit") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "no_emit") {
 			if tsconfig != nil && tsconfig.NoEmit != nil {
 				sourceRule.SetAttr("no_emit", *tsconfig.NoEmit)
 			} else {
@@ -733,7 +740,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig resolveJsonModule in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "resolve_json_module") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "resolve_json_module") {
 			if tsconfig != nil && tsconfig.ResolveJsonModule != nil {
 				sourceRule.SetAttr("resolve_json_module", *tsconfig.ResolveJsonModule)
 			} else {
@@ -742,7 +749,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig preserveJsx in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "preserve_jsx") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "preserve_jsx") {
 			if tsconfig != nil && tsconfig.Jsx != typescript.JsxNone {
 				sourceRule.SetAttr("preserve_jsx", tsconfig.Jsx == typescript.JsxPreserve)
 			} else {
@@ -751,7 +758,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig outDir in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "out_dir") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "out_dir") {
 			if tsconfig != nil && tsconfig.OutDir != "" && tsconfig.OutDir != "." {
 				sourceRule.SetAttr("out_dir", tsconfig.OutDir)
 			} else {
@@ -760,7 +767,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		}
 
 		// Reflect the tsconfig declarationDir in the ts_project rule
-		if !cfg.IsTsConfigIgnored(group.name, "declaration_dir") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "declaration_dir") {
 			if tsconfig != nil && tsconfig.DeclarationDir != nil {
 				sourceRule.SetAttr("declaration_dir", *tsconfig.DeclarationDir)
 			} else {
@@ -771,7 +778,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		// Reflect the tsconfig rootDir in the ts_project rule.
 		// rules_ts computes the effective rootDir as (package + root_dir), so
 		// root_dir must be relative to the package, not the workspace root.
-		if !cfg.IsTsConfigIgnored(group.name, "root_dir") {
+		if !cfg.IsTsConfigIgnored(group.name, ruleKind, "root_dir") {
 			pkgRelRootDir := "."
 			if tsconfig != nil {
 				pkgRelRootDir = tsconfigRootDirRelative(tsconfigRel, tsconfig.RootDir, args.Rel)
@@ -787,7 +794,7 @@ func (ts *typeScriptLang) addProjectRule(cfg *JsGazelleConfig, tsconfigRel strin
 		// values to keep them instead of gazelle removing them on "merge".
 		if existing != nil {
 			for _, attr := range tsProjectReflectedConfigAttributes {
-				if !cfg.IsTsConfigIgnored(group.name, attr) && existing.Attr(attr) != nil {
+				if !cfg.IsTsConfigIgnored(group.name, ruleKind, attr) && existing.Attr(attr) != nil {
 					sourceRule.SetAttr(attr, existing.Attr(attr))
 				}
 			}

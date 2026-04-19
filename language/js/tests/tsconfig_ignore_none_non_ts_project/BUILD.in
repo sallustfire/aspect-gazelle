@@ -1,0 +1,9 @@
+# Test: NONE on a non-ts_project group un-blocks the kind-based default that
+# would otherwise strip every reflected tsconfig attr. Pairs js_rule_kind
+# (upgrading the test group's kind to js_test) with js_tsconfig_ignore NONE
+# (opting that group back into attr reflection). Without NONE the js_test
+# rule would be emitted with no tsconfig/composite/etc.; with NONE, the rule
+# gets the full reflected set.
+
+# gazelle:js_rule_kind {dirname}_tests js_test
+# gazelle:js_tsconfig_ignore {dirname}_tests NONE

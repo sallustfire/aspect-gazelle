@@ -177,8 +177,15 @@ type targetTsConfig struct {
 	enabled *bool
 	// The tsconfig filename (e.g. "tsconfig.json", "tsconfig.test.json").
 	fileName string
-	// ts_project attributes that should not be generated from the tsconfig.
+	// Attrs that should not be generated from the tsconfig for this group.
+	// Populated by the additive `js_tsconfig_ignore <group> <attr>` form.
 	ignoredProps []string
+	// Attrs that should be generated from the tsconfig for this group even
+	// when the kind-based default would strip them (i.e. when ruleKind !=
+	// ts_project). Populated by the NONE sentinel, which writes every
+	// reflected attr into this slice — semantically equivalent to the
+	// fork's `-all` token.
+	reflectedProps []string
 }
 
 // JsGazelleConfig represents a config extension for a specific Bazel package.
@@ -277,6 +284,7 @@ func (c *JsGazelleConfig) NewChild(childPath string) *JsGazelleConfig {
 	for k, v := range c.groupTsConfigs {
 		cp := *v
 		cp.ignoredProps = append([]string{}, v.ignoredProps...)
+		cp.reflectedProps = append([]string{}, v.reflectedProps...)
 		cCopy.groupTsConfigs[k] = &cp
 	}
 
@@ -416,31 +424,49 @@ func (c *JsGazelleConfig) AddIgnoredTsConfig(groupName, propName string) {
 	fmt.Printf("Unknown ts_project attribute to ignore: %q\n\nIgnored attributes must be the ts_project attribute, not the tsconfig.json option name\n", propName)
 }
 
-// ClearTsconfigIgnores drops every accumulated (group, attr) entry in this
-// config's scope. Backing implementation for the global NONE sentinel on the
-// js_tsconfig_ignore directive.
+// ClearTsconfigIgnores is the global NONE sentinel. It clears every group's
+// ignoredProps and populates its reflectedProps with every known attr so that
+// the kind-based "strip all on non-ts_project" default is overridden. This is
+// the NONE-equivalent of the fork's `-all`.
 func (c *JsGazelleConfig) ClearTsconfigIgnores() {
 	for _, tc := range c.groupTsConfigs {
 		tc.ignoredProps = nil
+		tc.reflectedProps = append(tc.reflectedProps[:0], tsProjectReflectedConfigAttributes...)
 	}
 }
 
-// ClearTsconfigIgnoresForGroup drops every accumulated attr entry for
-// groupName in this config's scope. Backing implementation for the per-group
-// NONE sentinel form: `# gazelle:js_tsconfig_ignore <group> NONE`.
+// ClearTsconfigIgnoresForGroup is the per-group NONE sentinel. It clears just
+// groupName's own ignoredProps and marks every attr as reflected for that
+// group. Default-level ignores inherited from parent configs still apply —
+// only the group's own list is cleared.
 func (c *JsGazelleConfig) ClearTsconfigIgnoresForGroup(groupName string) {
-	if tc, ok := c.groupTsConfigs[groupName]; ok {
-		tc.ignoredProps = nil
-	}
+	tc := c.getOrCreateGroupTsConfig(groupName)
+	tc.ignoredProps = nil
+	tc.reflectedProps = append(tc.reflectedProps[:0], tsProjectReflectedConfigAttributes...)
 }
 
-func (c *JsGazelleConfig) IsTsConfigIgnored(groupName, propName string) bool {
-	for _, key := range []string{"", groupName} {
+// IsTsConfigIgnored reports whether propName should be suppressed when
+// generating the rule for groupName with ruleKind. Precedence:
+//
+//  1. Any explicit ignore (group or default) wins → ignored. This preserves
+//     the pre-NONE behavior where a default-level ignore leaks into all
+//     per-group checks.
+//  2. Any explicit reflect (group or default) wins next → not ignored. This
+//     is how NONE un-blocks the kind-based default on non-ts_project kinds.
+//  3. Kind-based fallback: non-ts_project → ignored; ts_project → not
+//     ignored.
+func (c *JsGazelleConfig) IsTsConfigIgnored(groupName, ruleKind, propName string) bool {
+	for _, key := range []string{groupName, ""} {
 		if tc, ok := c.groupTsConfigs[key]; ok && slices.Contains(tc.ignoredProps, propName) {
 			return true
 		}
 	}
-	return false
+	for _, key := range []string{groupName, ""} {
+		if tc, ok := c.groupTsConfigs[key]; ok && slices.Contains(tc.reflectedProps, propName) {
+			return false
+		}
+	}
+	return ruleKind != TsProjectKind
 }
 
 // Adds a dependency to the list of ignored dependencies for
