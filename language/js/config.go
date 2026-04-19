@@ -3,7 +3,6 @@ package gazelle
 import (
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 
 	common "github.com/aspect-build/aspect-gazelle/common"
@@ -177,15 +176,14 @@ type targetTsConfig struct {
 	enabled *bool
 	// The tsconfig filename (e.g. "tsconfig.json", "tsconfig.test.json").
 	fileName string
-	// Attrs that should not be generated from the tsconfig for this group.
-	// Populated by the additive `js_tsconfig_ignore <group> <attr>` form.
-	ignoredProps []string
-	// Attrs that should be generated from the tsconfig for this group even
-	// when the kind-based default would strip them (i.e. when ruleKind !=
-	// ts_project). Populated by the NONE sentinel, which writes every
-	// reflected attr into this slice — semantically equivalent to the
-	// fork's `-all` token.
-	reflectedProps []string
+	// Per-attr override of the kind-based default. When an attr is present:
+	//   true  → ignored (skip reflection for this group)
+	//   false → reflected (force reflection even when ruleKind != ts_project)
+	// Absent attrs fall back to the kind-based default in IsTsConfigIgnored.
+	// The additive `js_tsconfig_ignore <group> <attr>` form writes true.
+	// The NONE sentinel wipes the map and writes false for every known attr —
+	// semantically equivalent to the fork's `-all` token.
+	overrides map[string]bool
 }
 
 // JsGazelleConfig represents a config extension for a specific Bazel package.
@@ -283,8 +281,12 @@ func (c *JsGazelleConfig) NewChild(childPath string) *JsGazelleConfig {
 	cCopy.groupTsConfigs = make(map[string]*targetTsConfig, len(c.groupTsConfigs))
 	for k, v := range c.groupTsConfigs {
 		cp := *v
-		cp.ignoredProps = append([]string{}, v.ignoredProps...)
-		cp.reflectedProps = append([]string{}, v.reflectedProps...)
+		if v.overrides != nil {
+			cp.overrides = make(map[string]bool, len(v.overrides))
+			for attr, ignored := range v.overrides {
+				cp.overrides[attr] = ignored
+			}
+		}
 		cCopy.groupTsConfigs[k] = &cp
 	}
 
@@ -416,7 +418,10 @@ func (c *JsGazelleConfig) AddIgnoredTsConfig(groupName, propName string) {
 	for _, prop := range tsProjectReflectedConfigAttributes {
 		if prop == propName {
 			tc := c.getOrCreateGroupTsConfig(groupName)
-			tc.ignoredProps = append(tc.ignoredProps, propName)
+			if tc.overrides == nil {
+				tc.overrides = map[string]bool{}
+			}
+			tc.overrides[propName] = true
 			return
 		}
 	}
@@ -424,25 +429,28 @@ func (c *JsGazelleConfig) AddIgnoredTsConfig(groupName, propName string) {
 	fmt.Printf("Unknown ts_project attribute to ignore: %q\n\nIgnored attributes must be the ts_project attribute, not the tsconfig.json option name\n", propName)
 }
 
-// ClearTsconfigIgnores is the global NONE sentinel. It clears every group's
-// ignoredProps and populates its reflectedProps with every known attr so that
-// the kind-based "strip all on non-ts_project" default is overridden. This is
-// the NONE-equivalent of the fork's `-all`.
+// ClearTsconfigIgnores is the global NONE sentinel. For every group it wipes
+// any prior overrides and writes false for every known attr so the kind-based
+// "strip all on non-ts_project" default is overridden. NONE-equivalent of the
+// fork's `-all`.
 func (c *JsGazelleConfig) ClearTsconfigIgnores() {
 	for _, tc := range c.groupTsConfigs {
-		tc.ignoredProps = nil
-		tc.reflectedProps = append(tc.reflectedProps[:0], tsProjectReflectedConfigAttributes...)
+		tc.overrides = make(map[string]bool, len(tsProjectReflectedConfigAttributes))
+		for _, attr := range tsProjectReflectedConfigAttributes {
+			tc.overrides[attr] = false
+		}
 	}
 }
 
-// ClearTsconfigIgnoresForGroup is the per-group NONE sentinel. It clears just
-// groupName's own ignoredProps and marks every attr as reflected for that
-// group. Default-level ignores inherited from parent configs still apply —
-// only the group's own list is cleared.
+// ClearTsconfigIgnoresForGroup is the per-group NONE sentinel. It wipes just
+// groupName's own overrides and writes false for every known attr. Default-
+// level overrides on the "" group still apply — only the named group is reset.
 func (c *JsGazelleConfig) ClearTsconfigIgnoresForGroup(groupName string) {
 	tc := c.getOrCreateGroupTsConfig(groupName)
-	tc.ignoredProps = nil
-	tc.reflectedProps = append(tc.reflectedProps[:0], tsProjectReflectedConfigAttributes...)
+	tc.overrides = make(map[string]bool, len(tsProjectReflectedConfigAttributes))
+	for _, attr := range tsProjectReflectedConfigAttributes {
+		tc.overrides[attr] = false
+	}
 }
 
 // IsTsConfigIgnored reports whether propName should be suppressed when
@@ -456,15 +464,19 @@ func (c *JsGazelleConfig) ClearTsconfigIgnoresForGroup(groupName string) {
 //  3. Kind-based fallback: non-ts_project → ignored; ts_project → not
 //     ignored.
 func (c *JsGazelleConfig) IsTsConfigIgnored(groupName, ruleKind, propName string) bool {
+	sawReflect := false
 	for _, key := range []string{groupName, ""} {
-		if tc, ok := c.groupTsConfigs[key]; ok && slices.Contains(tc.ignoredProps, propName) {
-			return true
+		if tc, ok := c.groupTsConfigs[key]; ok {
+			if ignored, present := tc.overrides[propName]; present {
+				if ignored {
+					return true
+				}
+				sawReflect = true
+			}
 		}
 	}
-	for _, key := range []string{groupName, ""} {
-		if tc, ok := c.groupTsConfigs[key]; ok && slices.Contains(tc.reflectedProps, propName) {
-			return false
-		}
+	if sawReflect {
+		return false
 	}
 	return ruleKind != TsProjectKind
 }
