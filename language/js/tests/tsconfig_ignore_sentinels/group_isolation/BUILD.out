@@ -1,0 +1,20 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Test: per-group NONE. Disjoint attrs (`source_map` on {dirname}_foo,
+# `declaration_map` on {dirname}_bar) keep umbrella fallback and per-group
+# ignores independently observable.
+
+# gazelle:js_test_files {dirname}_foo **/*.foo.ts
+# gazelle:js_test_files {dirname}_bar **/*.bar.ts
+# gazelle:js_tsconfig_ignore {dirname}_foo source_map
+# gazelle:js_tsconfig_ignore {dirname}_bar declaration_map
+
+ts_project(
+    name = "group_isolation",
+    srcs = ["main.ts"],
+    declaration = True,
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)

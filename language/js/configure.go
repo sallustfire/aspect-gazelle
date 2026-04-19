@@ -169,11 +169,21 @@ func (ts *typeScriptLang) readDirectives(c *config.Config, rel string, f *rule.F
 			}
 			config.SetTsconfigFile(groupName, strings.TrimSpace(groupFile))
 		case Directive_TypeScriptConfigIgnore:
-			// TODO: potentially support multiple comma-separated properties, removing properties instead of only adding
+			// `NONE` is reserved in both the group and attr positions to remove global and group-specific ignores
 			groupName, propName, hasGroup := strings.Cut(value, " ")
 			if !hasGroup {
+				if groupName == "NONE" {
+					config.ClearTsconfigIgnores()
+					continue
+				}
 				propName = groupName
 				groupName = ""
+			} else {
+				propName = strings.TrimSpace(propName)
+				if propName == "NONE" {
+					config.ClearTsconfigIgnoresForGroup(groupName)
+					continue
+				}
 			}
 			config.AddIgnoredTsConfig(groupName, strings.TrimSpace(propName))
 		case Directive_IgnoreImports:

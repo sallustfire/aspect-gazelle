@@ -1,0 +1,26 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Test: per-group NONE on {dirname}_foo + same-group readd.
+
+# gazelle:js_tsconfig_ignore {dirname}_foo NONE
+# gazelle:js_tsconfig_ignore {dirname}_foo declaration
+
+ts_project(
+    name = "none_foo",
+    testonly = True,
+    srcs = ["a.foo.ts"],
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)
+
+ts_project(
+    name = "none_bar",
+    testonly = True,
+    srcs = ["b.bar.ts"],
+    declaration = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)

@@ -1,0 +1,4 @@
+# Test: per-group NONE on {dirname}_foo + same-group readd.
+
+# gazelle:js_tsconfig_ignore {dirname}_foo NONE
+# gazelle:js_tsconfig_ignore {dirname}_foo declaration

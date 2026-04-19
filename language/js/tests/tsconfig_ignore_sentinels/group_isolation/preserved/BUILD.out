@@ -1,0 +1,23 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Test: sibling with no local directives inherits all per-group ignores.
+
+ts_project(
+    name = "preserved_foo",
+    testonly = True,
+    srcs = ["a.foo.ts"],
+    declaration = True,
+    declaration_map = True,
+    incremental = True,
+    tsconfig = "//:tsconfig",
+)
+
+ts_project(
+    name = "preserved_bar",
+    testonly = True,
+    srcs = ["b.bar.ts"],
+    declaration = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)

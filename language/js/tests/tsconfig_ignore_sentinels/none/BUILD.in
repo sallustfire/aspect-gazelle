@@ -1,0 +1,5 @@
+# Test: global NONE wipes inherited and same-file ignores
+
+# gazelle:js_tsconfig_ignore tsconfig
+# gazelle:js_tsconfig_ignore NONE
+# gazelle:js_tsconfig_ignore declaration

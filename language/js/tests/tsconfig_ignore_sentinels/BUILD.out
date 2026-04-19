@@ -1,0 +1,25 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
+
+# Test: js_tsconfig_ignore NONE sentinel. Parent ignores `composite` on the
+# unnamed group and `incremental` on {dirname}_test; children assert NONE
+# clears both groups and does not leak across siblings.
+
+# gazelle:js_test_files {dirname}_test **/*.test.ts
+# gazelle:js_tsconfig_ignore composite
+# gazelle:js_tsconfig_ignore {dirname}_test incremental
+
+ts_project(
+    name = "tsconfig_ignore_sentinels",
+    srcs = ["main.ts"],
+    declaration = True,
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = ":tsconfig",
+)
+
+ts_config(
+    name = "tsconfig",
+    src = "tsconfig.json",
+    visibility = [":__subpackages__"],
+)

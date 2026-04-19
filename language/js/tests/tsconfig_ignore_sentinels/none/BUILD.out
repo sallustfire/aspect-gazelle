@@ -1,0 +1,28 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Test: global NONE wipes inherited and same-file ignores
+
+# gazelle:js_tsconfig_ignore tsconfig
+# gazelle:js_tsconfig_ignore NONE
+# gazelle:js_tsconfig_ignore declaration
+
+ts_project(
+    name = "none",
+    srcs = ["main.ts"],
+    composite = True,
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)
+
+ts_project(
+    name = "none_test",
+    testonly = True,
+    srcs = ["extra.test.ts"],
+    composite = True,
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)

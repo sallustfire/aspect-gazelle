@@ -1,0 +1,7 @@
+# Test: js_tsconfig_ignore NONE sentinel. Parent ignores `composite` on the
+# unnamed group and `incremental` on {dirname}_test; children assert NONE
+# clears both groups and does not leak across siblings.
+
+# gazelle:js_test_files {dirname}_test **/*.test.ts
+# gazelle:js_tsconfig_ignore composite
+# gazelle:js_tsconfig_ignore {dirname}_test incremental

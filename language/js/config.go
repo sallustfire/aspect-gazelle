@@ -389,6 +389,24 @@ func (c *JsGazelleConfig) AddIgnoredTsConfig(groupName, propName string) {
 	fmt.Printf("Unknown ts_project attribute to ignore: %q\n\nIgnored attributes must be the ts_project attribute, not the tsconfig.json option name\n", propName)
 }
 
+// ClearTsconfigIgnores drops every accumulated (group, attr) entry in this
+// config's scope. Backing implementation for the global NONE sentinel on the
+// js_tsconfig_ignore directive.
+func (c *JsGazelleConfig) ClearTsconfigIgnores() {
+	for _, tc := range c.groupTsConfigs {
+		tc.ignoredProps = nil
+	}
+}
+
+// ClearTsconfigIgnoresForGroup drops every accumulated attr entry for
+// groupName in this config's scope. Backing implementation for the per-group
+// NONE sentinel form: `# gazelle:js_tsconfig_ignore <group> NONE`.
+func (c *JsGazelleConfig) ClearTsconfigIgnoresForGroup(groupName string) {
+	if tc, ok := c.groupTsConfigs[groupName]; ok {
+		tc.ignoredProps = nil
+	}
+}
+
 func (c *JsGazelleConfig) IsTsConfigIgnored(groupName, propName string) bool {
 	for _, key := range []string{"", groupName} {
 		if tc, ok := c.groupTsConfigs[key]; ok && slices.Contains(tc.ignoredProps, propName) {

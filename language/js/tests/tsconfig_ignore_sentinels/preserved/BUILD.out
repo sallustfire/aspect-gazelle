@@ -1,0 +1,23 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Test: sibling with no local directives inherits both parent ignores.
+
+ts_project(
+    name = "preserved",
+    srcs = ["main.ts"],
+    declaration = True,
+    declaration_map = True,
+    incremental = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)
+
+ts_project(
+    name = "preserved_test",
+    testonly = True,
+    srcs = ["extra.test.ts"],
+    declaration = True,
+    declaration_map = True,
+    source_map = True,
+    tsconfig = "//:tsconfig",
+)
